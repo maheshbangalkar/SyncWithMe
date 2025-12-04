@@ -1,0 +1,20 @@
+/* Chat History Buttons */
+.history-btn {
+    width: 100%;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 6px 8px;
+    border-radius: 5px;
+    border: 1px solid #444;
+    background-color: #2c2c2c;
+    color: white;
+    margin-bottom: 5px;
+    cursor: pointer;
+}
+
+.history-btn:hover {
+    background-color: #0E1117;
+}
+

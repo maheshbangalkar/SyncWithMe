@@ -1,0 +1,5 @@
+google-genai
+gspread
+streamlit
+gspread_formatting
+dotenv
