@@ -34,14 +34,25 @@ class Config:
         if not self.api_key:
             raise KeyError("❌ GEMINI_API_KEY missing in Streamlit Secrets")
 
-        # Sections (MODEL / SHEET)
+        # Load MODEL and SHEET sections
         self.config = {
             "MODEL": dict(st.secrets.get("MODEL", {})),
             "SHEET": dict(st.secrets.get("SHEET", {}))
         }
 
-        # Google Service Account JSON
+        # Load Service Account JSON
         self.google_creds = st.secrets.get("google_service_account")
+
+        self.system_instruction_table = (
+            st.secrets.get("SYSTEM_INSTRUCTION_FILE")
+            or st.secrets.get("system_instruction_file")
+            or None
+        )
+
+        if self.system_instruction_table:
+            logging.info("✅ SYSTEM_INSTRUCTION_FILE loaded successfully from Streamlit Secrets.")
+        else:
+            logging.warning("❌ SYSTEM_INSTRUCTION_FILE missing in Streamlit Secrets.")
 
     # ------------------------------------------------------------
     # LOAD LOCAL FILES FROM Secrets/
@@ -116,39 +127,28 @@ class Config:
     def get_system_instruction(self):
         try:
             if self.is_streamlit_cloud:
-                logging.info("🔍 Loading SYSTEM_INSTRUCTION from Streamlit Secrets...")
 
-                possible_tables = [
-                    "SYSTEM_INSTRUCTION_FILE",
-                    "system_instruction_file",
-                ]
-                table = None
-
-                for key in possible_tables:
-                    if key in st.secrets:
-                        table = st.secrets[key]
-                        logging.info(f"✅ Found SYSTEM_INSTRUCTION table: {key}")
-                        break
+                table = (
+                    self.system_instruction_table
+                    or st.secrets.get("SYSTEM_INSTRUCTION_FILE")
+                    or st.secrets.get("system_instruction_file")
+                )
 
                 if table:
-                    inst = table.get("SYSTEM_INSTRUCTION") or table.get("system_instruction")
+                    inst = table.get("SYSTEM_INSTRUCTION")
                     if inst:
-                        logging.info("✅ SYSTEM_INSTRUCTION loaded successfully from Streamlit.")
+                        logging.info("✅ SYSTEM_INSTRUCTION loaded from Streamlit")
                         return inst.strip()
 
-                logging.warning("❌ SYSTEM_INSTRUCTION not found inside Streamlit secrets table.")
+                logging.warning("❌ SYSTEM_INSTRUCTION not found in Streamlit secrets.")
                 return None
 
-            # -----------------------------------------------------
-            # LOCAL ENVIRONMENT MODE
-            # -----------------------------------------------------
+            # Local machine
             BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             file_path = os.path.join(BASE_DIR, "Secrets", "SYSTEM_INSTRUCTION.txt")
 
             if os.path.exists(file_path):
-                logging.info(f"📄 Loading local SYSTEM_INSTRUCTION from {file_path}")
-                with open(file_path, "r", encoding="utf-8") as f:
-                    return f.read().strip()
+                return open(file_path, "r", encoding="utf-8").read().strip()
 
             logging.warning(f"⚠ SYSTEM_INSTRUCTION.txt not found at: {file_path}")
             return None
