@@ -1,8 +1,9 @@
+import streamlit as st
 import sys
 import os
 
 # =========================================================
-# Add project root to Python path for Streamlit Cloud
+# Setup paths FIRST (so page_icon can use them)
 # =========================================================
 CURRENT_FILE = os.path.abspath(__file__)
 UI_DIR = os.path.dirname(CURRENT_FILE)
@@ -11,29 +12,27 @@ PROJECT_ROOT = os.path.dirname(UI_DIR)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-# =========================================================
-# Now safe to import project modules
-# =========================================================
-import streamlit as st
-from Common.Config_Loader import config
-from Module.SyncWithMeChatBot import SyncWithMeChatBot
-from Common.Sheet_Functions import SheetClass as sc
-from Common import Constant as c
-from PIL import Image
-
-# =========================================================
-# Page setup
-# =========================================================
 current_dir = os.path.dirname(__file__)
 img_path = os.path.join(current_dir, "images", "SyncWithMe Logo.png")
 css_path = os.path.join(current_dir, "styles", "styles.css")
 assistant_path = os.path.join(current_dir, "images", "syncwithme_assistant.png")
 user_path = os.path.join(current_dir, "images", "syncwithme_user.png")
 
+# Page setup — To run before Streamlit renders anything
+# =========================================================
 st.set_page_config(
     page_title="SyncWithMe",
-    page_icon=assistant_path if os.path.exists(assistant_path) else None
+    page_icon=assistant_path if os.path.exists(assistant_path) else None,
 )
+
+# =========================================================
+# Now safe to import project modules
+# =========================================================
+from Common.Config_Loader import config
+from Module.SyncWithMeChatBot import SyncWithMeChatBot
+from Common.Sheet_Functions import SheetClass as sc
+from Common import Constant as c
+from PIL import Image
 
 # =========================================================
 # Load external CSS
@@ -154,7 +153,6 @@ if prompt and not st.session_state["is_processing"]:
 # =========================================================
 if st.session_state["is_processing"]:
     user_message = st.session_state["messages"][-1]["content"]
-
     spinner_text = c.THINKING if thinking_mode else c.GENERATING
 
     with st.spinner(spinner_text):
