@@ -10,8 +10,7 @@ import streamlit as st
 class Config:
     def __init__(self, config_path=None):
 
-        # Correct Streamlit Cloud Detection
-        self.is_streamlit_cloud = os.getenv("STREAMLIT_RUNTIME") is not None
+        self.is_streamlit_cloud = bool(st.secrets)
 
         if self.is_streamlit_cloud:
             logging.info("Running on Streamlit Cloud → Using st.secrets")
