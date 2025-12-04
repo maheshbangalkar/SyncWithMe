@@ -10,7 +10,7 @@ import streamlit as st
 class Config:
     def __init__(self, config_path=None):
 
-        self.is_streamlit_cloud = bool(st.secrets)
+        self.is_streamlit_cloud = os.getenv("STREAMLIT_DEPLOYMENT") == "cloud"
 
         if self.is_streamlit_cloud:
             logging.info("Running on Streamlit Cloud → Using st.secrets")
@@ -44,7 +44,8 @@ class Config:
     # ------------------------------------------------------------
     def _load_local_secrets(self, config_path):
 
-        BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # Correct path: go up 2 folders, not 3
+        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         SECRETS_DIR = os.path.join(BASE_DIR, "Secrets")
 
         # Validate Secrets folder
@@ -68,10 +69,10 @@ class Config:
         self.config = configparser.ConfigParser()
         self.config.read(config_path)
 
-        # Load API key (env takes priority)
-        self.api_key = os.getenv("API_KEY") or self.config["API"].get("API_KEY")
+        # Load API key
+        self.api_key = os.getenv("GEMINI_API_KEY") or self.config["API"].get("GEMINI_API_KEY")
         if not self.api_key:
-            raise ValueError("API_KEY missing in .env or Config.ini")
+            raise ValueError("GEMINI_API_KEY missing in .env or Config.ini")
 
         # Load Google service account file
         sa_path = os.path.join(SECRETS_DIR, "Service_Account.json")
@@ -80,6 +81,7 @@ class Config:
                 self.google_creds = json.load(f)
         else:
             self.google_creds = None
+
 
     # ------------------------------------------------------------
     # Create Gemini Client
@@ -114,8 +116,8 @@ class Config:
             if self.is_streamlit_cloud:
                 return st.secrets.get("SYSTEM_INSTRUCTION", None)
 
-            # Local file
-            BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            # Local file (FIXED PATH)
+            BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             sys_file = os.path.join(BASE_DIR, "Secrets", "SYSTEM_INSTRUCTION.txt")
 
             if os.path.exists(sys_file):

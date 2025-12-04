@@ -19,7 +19,7 @@ class SheetClass:
         - Streamlit Cloud → use st.secrets
         """
 
-        self.is_streamlit_cloud = "STREAMLIT_SERVER_ENABLED" in os.environ
+        self.is_streamlit_cloud = os.getenv("STREAMLIT_DEPLOYMENT") == "cloud"
 
         # Load sheet config from Config Loader
         self.spreadsheet_id = config.fetch_sheet_value("SPREADSHEET_ID")
@@ -57,8 +57,8 @@ class SheetClass:
             else:
                 logging.info("Using local JSON credentials from Secrets folder")
 
-                # Local Secrets folder structure
-                BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                # Fix BASE_DIR path
+                BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 SECRETS_DIR = os.path.join(BASE_DIR, "Secrets")
 
                 service_file_name = config.fetch_sheet_value("SERVICE_ACCOUNT_FILE")
