@@ -1,128 +1,186 @@
 import json
-import google.generativeai as genai
-from Common.Config_Loader import config
 import re
 from enum import Enum
+from typing import Any, Dict, List, Union
+
 
 class CommonFunctions:
-    def __init__(self):
-        None
-    
-    def make_serializable(self, obj):
+    """
+    Utility helpers used across the project.
+
+    Methods are static so you can import the class and call directly:
+        from Common.Common_Functions import CommonFunctions as common
+        common.build_context_text(...)
+    """
+
+    @staticmethod
+    def make_serializable(obj: Any) -> Any:
         """
-        Recursively convert objects to JSON-serializable format.
+        Recursively convert objects to JSON-serializable forms.
         Non-serializable objects are converted to strings.
         """
+        # Basic JSON types are returned as-is
+        if obj is None or isinstance(obj, (str, int, float, bool)):
+            return obj
+
+        # Enum -> value
+        if isinstance(obj, Enum):
+            return obj.value
+
+        # List/tuple -> convert each element
+        if isinstance(obj, (list, tuple)):
+            return [CommonFunctions.make_serializable(v) for v in obj]
+
+        # Dict -> convert keys and values
         if isinstance(obj, dict):
-            return {k: self.make_serializable(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self.make_serializable(v) for v in obj]
-        elif hasattr(obj, "__dict__"):
-            return self.make_serializable(vars(obj))
-        else:
-            try:
-                json.dumps(obj)
-                return obj
-            except (TypeError, OverflowError):
-                return str(obj)
-    
-    def format_template(template, updates: dict):
+            return {str(k): CommonFunctions.make_serializable(v) for k, v in obj.items()}
+
+        # Objects with __dict__ (SDK objects) -> convert their public attrs
+        if hasattr(obj, "__dict__"):
+            out = {}
+            for k, v in vars(obj).items():
+                if k.startswith("_"):
+                    continue
+                out[k] = CommonFunctions.make_serializable(v)
+            return out
+
+        # Fallback: try JSON dump, otherwise string
+        try:
+            json.dumps(obj)
+            return obj
+        except Exception:
+            return str(obj)
+
+    @staticmethod
+    def format_template(template: Union[list, dict, str], updates: Dict[str, Any]) -> str:
         """
-        Copies a template, updates the first dictionary with provided values, 
-        and returns the JSON string.
+        Copy a template and update it with values from `updates`.
+        - If template is a list and first element is a dict, it updates that dict.
+        - If template is a dict, it updates it.
+        - If template is a string, it performs simple replacement of keys wrapped in {{key}}.
+        Returns a JSON string for list/dict templates, or the formatted string.
         """
-        formatted = template.copy()
-        if formatted and isinstance(formatted[0], dict):
-            formatted[0].update(updates)
-        return json.dumps(formatted)
+        if isinstance(template, list):
+            # make a shallow copy
+            formatted = [item.copy() if isinstance(item, dict) else item for item in template]
+            if formatted and isinstance(formatted[0], dict):
+                formatted[0].update({k: CommonFunctions.make_serializable(v) for k, v in updates.items()})
+            return json.dumps(formatted, ensure_ascii=False)
 
-    def build_context_text(context_history):
+        if isinstance(template, dict):
+            formatted = template.copy()
+            formatted.update({k: CommonFunctions.make_serializable(v) for k, v in updates.items()})
+            return json.dumps(formatted, ensure_ascii=False)
+
+        if isinstance(template, str):
+            result = template
+            # simple templating: replace {{key}} with str(value)
+            for k, v in updates.items():
+                result = result.replace(f"{{{{{k}}}}}", str(v))
+            return result
+
+        # Unknown type — return stringified
+        return json.dumps({"template": str(template), "updates": updates}, ensure_ascii=False)
+
+    @staticmethod
+    def build_context_text(context_history: List[Dict[str, str]]) -> str:
         """
-        Build a formatted text transcript from a list of message dictionaries.
-
-        Each item in `context_history` is expected to be a dictionary that may
-        contain "user" and/or "assistant" keys. The function extracts these values and
-        constructs a readable conversation history in the format:
-
-            User: <user_message>
-            Assistant: <assistant_message>
-
-        Returns:
-            str: A newline-separated string representing the conversation context.
+        Build a newline-separated conversation context string from a list of messages.
+        Each message is expected to be a dict with optional keys: 'user', 'assistant'.
         """
-        context_text = ""
-        for msg in context_history:
-            if isinstance(msg, dict):
-                human_msg = msg.get("user")
-                system_msg = msg.get("assistant")
-                if human_msg:
-                    context_text += f"User: {human_msg}\n"
-                if system_msg:
-                    context_text += f"Assistant: {system_msg}\n"
-        
-        return context_text
+        lines: List[str] = []
+        for msg in context_history or []:
+            if not isinstance(msg, dict):
+                continue
+            user_msg = msg.get("user")
+            assistant_msg = msg.get("assistant")
+            if user_msg:
+                lines.append(f"User: {user_msg}")
+            if assistant_msg:
+                lines.append(f"Assistant: {assistant_msg}")
+        return "\n".join(lines).strip()
 
-    def sdk_dump_to_json(raw):
-        def convert(obj):
-            # Basic types
+    @staticmethod
+    def sdk_dump_to_json(raw: Any) -> str:
+        """
+        Safely convert an SDK response (or any complex object) into a JSON string.
+        Handles enums, lists, dicts, and objects with __dict__ recursively.
+        """
+        def convert(obj: Any) -> Any:
+            # None and primitives
             if obj is None or isinstance(obj, (str, int, float, bool)):
                 return obj
 
-            # Enum → value
+            # Enum
             if isinstance(obj, Enum):
                 return obj.value
 
-            # List → convert each item
-            if isinstance(obj, list):
-                return [convert(item) for item in obj]
+            # List/tuple
+            if isinstance(obj, (list, tuple)):
+                return [convert(i) for i in obj]
 
-            # Dict → convert keys & values
+            # Dict
             if isinstance(obj, dict):
                 return {str(k): convert(v) for k, v in obj.items()}
 
-            # SDK objects (have __dict__)
+            # Objects with __dict__
             if hasattr(obj, "__dict__"):
-                data = {}
-                for k, v in obj.__dict__.items():
-                    # Skip private attributes
+                out = {}
+                for k, v in vars(obj).items():
                     if k.startswith("_"):
                         continue
-                    data[k] = convert(v)
-                return data
+                    out[k] = convert(v)
+                return out
 
             # Fallback to string
-            return str(obj)
+            try:
+                return str(obj)
+            except Exception:
+                return {"unserializable_type": str(type(obj))}
 
         try:
-            # Convert whole response
-            result = convert(raw)
-            return json.dumps(result, indent=2, ensure_ascii=False)
+            converted = convert(raw)
+            return json.dumps(converted, indent=2, ensure_ascii=False)
         except Exception as e:
-            return json.dumps(
-                {
-                    "error": str(e),
-                    "type": str(type(raw))
-                },
-                indent=2
-            )
-    
-    def extract_sources(response):
+            return json.dumps({"error": str(e), "type": str(type(raw))}, indent=2)
+
+    @staticmethod
+    def extract_sources(response: Any) -> List[Dict[str, str]]:
         """
-        Extracts (title, uri) from response.
-
-        Returns:
-            list of dict: Each dict contains {"title": str, "url": str}
+        Extract sources (title, uri) from a response's string representation.
+        Returns a list of {"title": ..., "url": ...} dictionaries.
+        This is a best-effort parser that looks for common patterns.
         """
-        raw_text = str(response)
+        text = ""
+        try:
+            # Prefer structured fields if present
+            if hasattr(response, "candidates") and response.candidates:
+                # Try to pull from candidate content metadata if available
+                for cand in response.candidates:
+                    # attempt to get source metadata
+                    # many SDK responses embed source info in .metadata or .content
+                    if hasattr(cand, "content") and hasattr(cand.content, "metadata"):
+                        meta = getattr(cand.content, "metadata", None)
+                        if isinstance(meta, dict):
+                            # try to extract title/url pairs
+                            titles = meta.get("titles") or meta.get("title")
+                            uri = meta.get("uri") or meta.get("url")
+                            if uri:
+                                return [{"title": titles or str(uri), "url": uri}]
+                # fallback to stringifying
+                text = str(response)
+            else:
+                text = str(response)
+        except Exception:
+            text = str(response)
 
-        titles = re.findall(r"title='([^']+)'", raw_text)
-        urls = re.findall(r"uri='([^']+)'", raw_text)
+        # regex extraction fallback
+        titles = re.findall(r"title=['\"]([^'\"]+)['\"]", text)
+        urls = re.findall(r"(?:uri|url|link)=['\"]([^'\"]+)['\"]", text)
 
-        results = []
+        results: List[Dict[str, str]] = []
         for t, u in zip(titles, urls):
             results.append({"title": t, "url": u})
-        return json.dumps(results)
 
-
-
-    
+        # If no pairs found, return empty list
+        return results

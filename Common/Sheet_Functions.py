@@ -1,76 +1,90 @@
 import os
 import gspread
+import streamlit as st
 from google.oauth2.service_account import Credentials
+from datetime import datetime
+from gspread_formatting import Border, Borders, CellFormat, format_cell_range
+
 from Common.Config_Loader import config
 from Common.Logger_Config import logging
-from datetime import datetime
-from gspread_formatting import (
-    Border,
-    Borders,
-    CellFormat,
-    format_cell_range
-)
 from Common import Constant as c
-
-CURRENT_FILE = os.path.abspath(__file__)
-APP_DIR = os.path.dirname(os.path.dirname(CURRENT_FILE))   
-BASE_DIR = os.path.dirname(APP_DIR)                       
-SECRETS_DIR = os.path.join(BASE_DIR, "secrets")
 
 
 class SheetClass:
     def __init__(self):
         """
-        Initializes Google Sheet Manager using configuration values.
+        Initializes Google Sheet Manager.
+        Automatically detects:
+        - Local environment → use Secrets folder files
+        - Streamlit Cloud → use st.secrets
         """
-        # Only filename comes from config. Path is resolved here.
-        service_file_name = config.fetch_sheet_value("SERVICE_ACCOUNT_FILE").strip()
 
-        # Correct absolute path:
-        self.service_account_file = os.path.join(SECRETS_DIR, service_file_name)
+        self.is_streamlit_cloud = "STREAMLIT_SERVER_ENABLED" in os.environ
 
-        self.spreadsheet_id = config.fetch_sheet_value("SPREADSHEET_ID").strip()
-        self.sheet_name = config.fetch_sheet_value("SHEET_NAME").strip()
-        self.scopes = [s.strip() for s in config.fetch_sheet_value("SCOPES").split(",")]
+        # Load sheet config from Config Loader
+        self.spreadsheet_id = config.fetch_sheet_value("SPREADSHEET_ID")
+        self.sheet_name = config.fetch_sheet_value("SHEET_NAME")
+
+        raw_scopes = config.fetch_sheet_value("SCOPES")
+
+        # Streamlit Secrets uses list for scopes, local uses comma separated
+        if isinstance(raw_scopes, list):
+            self.scopes = raw_scopes
+        else:
+            self.scopes = [s.strip() for s in raw_scopes.split(",")]
 
         self.sheet = None
+        self._authenticate_and_load_sheet()
 
-        self.get_sheet()
-
-
-    def get_sheet(self):
-        """
-        Authenticates the Google Sheet and loads the worksheet.
-        """
+    # -------------------------------------------------------
+    # Authenticate & Load Sheet
+    # -------------------------------------------------------
+    def _authenticate_and_load_sheet(self):
         try:
-            if not os.path.exists(self.service_account_file):
-                raise FileNotFoundError(
-                    f"Service account file not found: {self.service_account_file}"
+            if self.is_streamlit_cloud:
+                logging.info("Using Streamlit Cloud credentials for Google Sheets")
+
+                # Use Google credentials from st.secrets (already TOML formatted)
+                service_info = st.secrets.get("google_service_account")
+                if not service_info:
+                    raise ValueError("Missing [google_service_account] in Streamlit Secrets")
+
+                credentials = Credentials.from_service_account_info(
+                    service_info,
+                    scopes=self.scopes
                 )
 
-            credentials = Credentials.from_service_account_file(
-                self.service_account_file,
-                scopes=self.scopes
-            )
+            else:
+                logging.info("Using local JSON credentials from Secrets folder")
 
+                # Local Secrets folder structure
+                BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                SECRETS_DIR = os.path.join(BASE_DIR, "Secrets")
+
+                service_file_name = config.fetch_sheet_value("SERVICE_ACCOUNT_FILE")
+                service_account_file = os.path.join(SECRETS_DIR, service_file_name)
+
+                if not os.path.exists(service_account_file):
+                    raise FileNotFoundError(f"Service Account file missing: {service_account_file}")
+
+                credentials = Credentials.from_service_account_file(
+                    service_account_file,
+                    scopes=self.scopes
+                )
+
+            # Connect to Google Sheets
             client = gspread.authorize(credentials)
             self.sheet = client.open_by_key(self.spreadsheet_id).worksheet(self.sheet_name)
 
             logging.info(f"Successfully accessed sheet: {self.sheet_name}")
 
-        except FileNotFoundError as fnf:
-            logging.error(fnf)
-            raise
-
-        except gspread.SpreadsheetNotFound:
-            logging.error(f"Spreadsheet with ID '{self.spreadsheet_id}' not found or access denied.")
-            raise
-
         except Exception as e:
-            logging.error(f"Error accessing the Google Sheet: {e}")
+            logging.error(f"Error loading Google Sheet: {e}")
             raise
 
-
+    # -------------------------------------------------------
+    # Convert numeric col → Excel letter
+    # -------------------------------------------------------
     def _convert_to_column_letter(self, col):
         letters = ""
         while col:
@@ -78,23 +92,29 @@ class SheetClass:
             letters = chr(65 + remainder) + letters
         return letters
 
-
+    # -------------------------------------------------------
+    # Apply borders to new row
+    # -------------------------------------------------------
     def add_all_borders_to_row(self, row_number):
         try:
             row_values = self.sheet.row_values(row_number)
             last_col_index = len(row_values)
             if last_col_index == 0:
                 return
+
             last_col_letter = self._convert_to_column_letter(last_col_index)
             b = Border(c.SOLID_BORDER)
             border_format = CellFormat(borders=Borders(top=b, bottom=b, left=b, right=b))
+
             range_str = f"A{row_number}:{last_col_letter}{row_number}"
             format_cell_range(self.sheet, range_str, border_format)
 
         except Exception as e:
             logging.error(f"Error applying ALL borders: {e}")
 
-
+    # -------------------------------------------------------
+    # Get next serial number
+    # -------------------------------------------------------
     def get_next_sr_no(self):
         try:
             values = self.sheet.col_values(1)
@@ -105,7 +125,9 @@ class SheetClass:
             logging.error(f"Error getting serial number: {e}")
             return 1
 
-
+    # -------------------------------------------------------
+    # Save Question + Response to Google Sheet
+    # -------------------------------------------------------
     def save_question_response(self, question, is_think, model_used,
                                response=c.NA, bot_text=c.NA,
                                formatted_response=None, formatted_usage=None):
@@ -114,15 +136,16 @@ class SheetClass:
             sr_no = self.get_next_sr_no()
             datestamp = datetime.now().strftime(c.DATE_FORMAT)
 
+            # Determine status
             status = c.RECEIVED if (response and not isinstance(response, str)) else c.FAILED
 
-            if isinstance(response, str) or isinstance(response, Exception) or (c.ERROR.lower() in response):
-                bot_text_safe = response
+            if isinstance(response, str) or isinstance(response, Exception) or (c.ERROR.lower() in str(response).lower()):
+                bot_text_safe = str(response)
                 formatted_safe = c.NO_RESPONSE
                 status = c.FAILED
             else:
-                bot_text_safe = bot_text if bot_text else (response if response else c.EMPTY_ANSWER)
-                formatted_safe = formatted_response if formatted_response else (response if response else c.NO_RESPONSE)
+                bot_text_safe = bot_text if bot_text else response
+                formatted_safe = formatted_response if formatted_response else response
                 status = c.RECEIVED
 
             row_data = [

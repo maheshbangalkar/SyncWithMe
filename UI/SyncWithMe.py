@@ -1,11 +1,12 @@
 import sys
 import os
+
 # =========================================================
 # Add project root to Python path for Streamlit Cloud
 # =========================================================
-CURRENT_FILE = os.path.abspath(__file__)                    
-UI_DIR = os.path.dirname(CURRENT_FILE)                       
-PROJECT_ROOT = os.path.dirname(UI_DIR)                      
+CURRENT_FILE = os.path.abspath(__file__)
+UI_DIR = os.path.dirname(CURRENT_FILE)
+PROJECT_ROOT = os.path.dirname(UI_DIR)
 
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -29,7 +30,10 @@ css_path = os.path.join(current_dir, "styles", "styles.css")
 assistant_path = os.path.join(current_dir, "images", "syncwithme_assistant.png")
 user_path = os.path.join(current_dir, "images", "syncwithme_user.png")
 
-st.set_page_config(page_title="SyncWithMe", page_icon=assistant_path)
+st.set_page_config(
+    page_title="SyncWithMe",
+    page_icon=assistant_path if os.path.exists(assistant_path) else None
+)
 
 # =========================================================
 # Load external CSS
@@ -61,13 +65,23 @@ with col2:
     st.caption("Your personal assistant to sync with the world 🌏 — powered by Gemini 💠")
 
 # =========================================================
-# Initialize chatbot
+# Initialize chatbot and sheet handler
 # =========================================================
 if "chatbot" not in st.session_state:
-    sheet = sc()
+    try:
+        sheet = sc()  # auto detects Streamlit or local
+    except Exception as e:
+        st.error(f"Google Sheet error: {e}")
+        sheet = None
+
     client = config.get_client()
-    gemini_model = config.get_model("GEMINI_2_5_FLASH")
-    st.session_state["chatbot"] = SyncWithMeChatBot(client, gemini_model, sheet)
+    model_name = config.get_model("GEMINI_2_5_FLASH")
+
+    st.session_state["chatbot"] = SyncWithMeChatBot(
+        client=client,
+        model=model_name,
+        sheet=sheet
+    )
 
 chatbot = st.session_state["chatbot"]
 
@@ -107,16 +121,14 @@ with st.sidebar:
                 unsafe_allow_html=True
             )
 
-history_click = st.session_state.get("history_click", None)
-
 # =========================================================
-# Display chat
+# Display chat messages
 # =========================================================
 for msg in st.session_state["messages"]:
-    if msg["role"] == "assistant":
-        st.chat_message("assistant", avatar=assistant_path).write(msg["content"])
-    else:
-        st.chat_message("user", avatar=user_path).write(msg["content"])
+    avatar = assistant_path if msg["role"] == "assistant" else user_path
+    avatar = avatar if os.path.exists(avatar) else None
+
+    st.chat_message(msg["role"], avatar=avatar).write(msg["content"])
 
 # =========================================================
 # Chat Input
@@ -125,7 +137,7 @@ if "is_processing" not in st.session_state:
     st.session_state["is_processing"] = False
 
 prompt = st.chat_input(
-    "Ask anything", 
+    "Ask anything…",
     disabled=st.session_state["is_processing"]
 )
 
@@ -142,10 +154,17 @@ if prompt and not st.session_state["is_processing"]:
 # =========================================================
 if st.session_state["is_processing"]:
     user_message = st.session_state["messages"][-1]["content"]
-    msg = c.THINKING if thinking_mode else c.GENERATING
 
-    with st.spinner(msg):
-        response_text = chatbot.get_gemini_text_response(user_message, thinking_mode)
+    spinner_text = c.THINKING if thinking_mode else c.GENERATING
+
+    with st.spinner(spinner_text):
+        try:
+            response_text = chatbot.get_gemini_text_response(
+                user_message,
+                thinking_mode
+            )
+        except Exception as e:
+            response_text = f"Error: {str(e)}"
 
     st.session_state["messages"].append({
         "role": "assistant",

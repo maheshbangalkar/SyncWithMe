@@ -179,3 +179,56 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# ===========================================
+# SyncWithME ChatBot - Security & Build Ignore
+# ===========================================
+
+# ----------------------------
+# Secrets & Credentials
+# ----------------------------
+Secrets/
+.env
+*.env
+*.key
+*.pem
+*.json
+Service_Account.json
+SYSTEM_INSTRUCTION.txt
+Config.ini
+
+# Avoid committing Streamlit local configs
+.streamlit/secrets.toml
+.streamlit/
+
+# ----------------------------
+# Python & Virtual Environments
+# ----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.sqlite3
+
+venv/
+env/
+.venv/
+
+# ----------------------------
+# OS Files
+# ----------------------------
+.DS_Store
+Thumbs.db
+
+# ----------------------------
+# IDE Files
+# ----------------------------
+.vscode/
+.idea/
+
+# ----------------------------
+# Logs
+# ----------------------------
+*.log
+logs/
