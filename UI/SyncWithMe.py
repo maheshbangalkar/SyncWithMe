@@ -1,24 +1,39 @@
+import sys
+import os
+# =========================================================
+# Add project root to Python path for Streamlit Cloud
+# =========================================================
+CURRENT_FILE = os.path.abspath(__file__)                    
+UI_DIR = os.path.dirname(CURRENT_FILE)                       
+PROJECT_ROOT = os.path.dirname(UI_DIR)                      
+
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+# =========================================================
+# Now safe to import project modules
+# =========================================================
 import streamlit as st
 from Common.Config_Loader import config
 from Module.SyncWithMeChatBot import SyncWithMeChatBot
 from Common.Sheet_Functions import SheetClass as sc
-import os
-from PIL import Image
 from Common import Constant as c
-# -------------------------
+from PIL import Image
+
+# =========================================================
 # Page setup
-# -------------------------
+# =========================================================
 current_dir = os.path.dirname(__file__)
 img_path = os.path.join(current_dir, "images", "SyncWithMe Logo.png")
 css_path = os.path.join(current_dir, "styles", "styles.css")
 assistant_path = os.path.join(current_dir, "images", "syncwithme_assistant.png")
 user_path = os.path.join(current_dir, "images", "syncwithme_user.png")
 
-
 st.set_page_config(page_title="SyncWithMe", page_icon=assistant_path)
-# -------------------------
+
+# =========================================================
 # Load external CSS
-# -------------------------
+# =========================================================
 def load_css(file_path):
     if os.path.exists(file_path):
         with open(file_path) as f:
@@ -28,9 +43,9 @@ def load_css(file_path):
 
 load_css(css_path)
 
-# -------------------------
-# Top logo + title in a row
-# -------------------------
+# =========================================================
+# Header (logo + title)
+# =========================================================
 col1, col2 = st.columns([1, 4])
 
 with col1:
@@ -45,9 +60,9 @@ with col2:
     st.title("SyncWithMe ChatBot 🔄🤖")
     st.caption("Your personal assistant to sync with the world 🌏 — powered by Gemini 💠")
 
-# -------------------------
-# Initialize chatbot in session state
-# -------------------------
+# =========================================================
+# Initialize chatbot
+# =========================================================
 if "chatbot" not in st.session_state:
     sheet = sc()
     client = config.get_client()
@@ -56,17 +71,17 @@ if "chatbot" not in st.session_state:
 
 chatbot = st.session_state["chatbot"]
 
-# -------------------------
+# =========================================================
 # Initialize chat messages
-# -------------------------
+# =========================================================
 if "messages" not in st.session_state:
     st.session_state["messages"] = [
         {"role": "assistant", "content": "How can I help you?"}
     ]
 
-# -------------------------
-# Sidebar Chat History
-# -------------------------
+# =========================================================
+# Sidebar History
+# =========================================================
 with st.sidebar:
     options = {"Thinking Mode": True, "Normal Mode": False}
     thinking_mode_label = st.radio(
@@ -79,14 +94,10 @@ with st.sidebar:
     st.markdown("---")
     st.header("Chat History 🕒")
 
-    # Render user messages
     for i, msg in enumerate(st.session_state["messages"]):
         if msg["role"] == "user":
-
             preview = msg["content"][:30] + ("..." if len(msg["content"]) > 30 else "")
-
-            # clickable HTML div with hover full text
-            if st.markdown(
+            st.markdown(
                 f"""
                 <div class="history-btn" title="{msg['content']}" 
                      onclick="window.parent.postMessage({{'history_click': {i}}}, '*');">
@@ -94,57 +105,52 @@ with st.sidebar:
                 </div>
                 """,
                 unsafe_allow_html=True
-            ):
-                pass
+            )
 
-# Handle click event
 history_click = st.session_state.get("history_click", None)
 
-# -------------------------
-# Display all messages
-# -------------------------
+# =========================================================
+# Display chat
+# =========================================================
 for msg in st.session_state["messages"]:
     if msg["role"] == "assistant":
         st.chat_message("assistant", avatar=assistant_path).write(msg["content"])
     else:
         st.chat_message("user", avatar=user_path).write(msg["content"])
 
-# -------------------------
-# Mode selector + chat input
-# -------------------------
-# Ensure processing state exists
+# =========================================================
+# Chat Input
+# =========================================================
 if "is_processing" not in st.session_state:
     st.session_state["is_processing"] = False
 
 prompt = st.chat_input(
     "Ask anything", 
-    disabled=st.session_state["is_processing"])
+    disabled=st.session_state["is_processing"]
+)
 
-# -------------------------
-# Process new input
-# -------------------------
-# If user submits a prompt
+# =========================================================
+# Handle user prompt
+# =========================================================
 if prompt and not st.session_state["is_processing"]:
     st.session_state["messages"].append({"role": "user", "content": prompt})
     st.session_state["is_processing"] = True
     st.rerun()
 
-
-# If processing mode is active, generate response
+# =========================================================
+# Generate assistant response
+# =========================================================
 if st.session_state["is_processing"]:
     user_message = st.session_state["messages"][-1]["content"]
-
     msg = c.THINKING if thinking_mode else c.GENERATING
 
     with st.spinner(msg):
         response_text = chatbot.get_gemini_text_response(user_message, thinking_mode)
 
-    # Store assistant message
     st.session_state["messages"].append({
         "role": "assistant",
         "content": response_text
     })
 
-    # Unlock input
     st.session_state["is_processing"] = False
     st.rerun()
