@@ -116,14 +116,18 @@ class Config:
     # ------------------------------------------------------------
     def get_system_instruction(self):
         try:
+            # Streamlit Cloud
             if self.is_streamlit_cloud:
-                return st.secrets.get("SYSTEM_INSTRUCTION")
+                if "SYSTEM_INSTRUCTION_FILE" in st.secrets:
+                    return st.secrets["SYSTEM_INSTRUCTION_FILE"].get("SYSTEM_INSTRUCTION", "").strip()
 
+            # Local file fallback
             BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             file_path = os.path.join(BASE_DIR, "Secrets", "SYSTEM_INSTRUCTION.txt")
 
             if os.path.exists(file_path):
-                return open(file_path, "r", encoding="utf-8").read().strip()
+                with open(file_path, "r", encoding="utf-8") as f:
+                    return f.read().strip()
 
             logging.warning(f"⚠ SYSTEM_INSTRUCTION.txt not found at: {file_path}")
             return None
@@ -131,6 +135,7 @@ class Config:
         except Exception as e:
             logging.error(f"❌ Error loading system instruction: {e}")
             return None
+
 
     # ------------------------------------------------------------
     # Sheet Values Fetch
