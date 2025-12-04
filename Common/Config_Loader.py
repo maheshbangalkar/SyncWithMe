@@ -10,7 +10,13 @@ import streamlit as st
 class Config:
     def __init__(self, config_path=None):
 
-        self.is_streamlit_cloud = os.getenv("STREAMLIT_RUNTIME_ENVIRONMENT") == "cloud"
+        self.is_streamlit_cloud = False
+        try:
+            # Streamlit Cloud: st.secrets is ALWAYS non-empty
+            if hasattr(st, "secrets") and len(st.secrets) > 0:
+                self.is_streamlit_cloud = True
+        except:
+            self.is_streamlit_cloud = False
 
         if self.is_streamlit_cloud:
             logging.info("Running on Streamlit Cloud → Using st.secrets")
@@ -29,14 +35,14 @@ class Config:
         if not self.api_key:
             raise KeyError("❌ GEMINI_API_KEY missing in Streamlit Secrets")
 
-        # Config Sections (MODEL / SHEET)
+        # Sections (MODEL / SHEET)
         self.config = {
             "MODEL": dict(st.secrets.get("MODEL", {})),
             "SHEET": dict(st.secrets.get("SHEET", {}))
         }
 
-        # Service Account JSON
-        self.google_creds = st.secrets.get("google_service_account", None)
+        # Google Service Account JSON
+        self.google_creds = st.secrets.get("google_service_account")
 
     # ------------------------------------------------------------
     # LOAD LOCAL FILES FROM Secrets/
@@ -53,7 +59,7 @@ class Config:
         # Load .env
         env_path = os.path.join(SECRETS_DIR, ".env")
         if not os.path.exists(env_path):
-            raise FileNotFoundError(f"❌ .env file missing at: {env_path}")
+            raise FileNotFoundError(f"❌ .env missing at: {env_path}")
         load_dotenv(env_path)
 
         # Load Config.ini
@@ -61,7 +67,7 @@ class Config:
             config_path = os.path.join(SECRETS_DIR, "Config.ini")
 
         if not os.path.exists(config_path):
-            raise FileNotFoundError(f"❌ Config.ini file missing at: {config_path}")
+            raise FileNotFoundError(f"❌ Config.ini missing at: {config_path}")
 
         self.config = configparser.ConfigParser()
         self.config.read(config_path)
@@ -90,7 +96,7 @@ class Config:
             raise RuntimeError(f"❌ Failed to initialize Gemini client: {e}")
 
     # ------------------------------------------------------------
-    # Model name from MODEL section
+    # Model Name Fetch
     # ------------------------------------------------------------
     def get_model(self, model_name):
 
@@ -106,10 +112,9 @@ class Config:
         return section[model_name]
 
     # ------------------------------------------------------------
-    # System Instructions
+    # System Instruction Loader
     # ------------------------------------------------------------
     def get_system_instruction(self):
-
         try:
             if self.is_streamlit_cloud:
                 return st.secrets.get("SYSTEM_INSTRUCTION")
@@ -128,13 +133,13 @@ class Config:
             return None
 
     # ------------------------------------------------------------
-    # Fetch Sheet Values
+    # Sheet Values Fetch
     # ------------------------------------------------------------
     def fetch_sheet_value(self, key):
         return self.config["SHEET"].get(key)
 
     # ------------------------------------------------------------
-    # General Key Fetcher
+    # General Key Finder
     # ------------------------------------------------------------
     def fetch_key_value(self, key_name):
 
@@ -143,12 +148,12 @@ class Config:
                 if key_name in section:
                     return section[key_name]
         else:
-            for section in self.config.sections():
-                if key_name in self.config[section]:
-                    return self.config[section][key_name]
+            for sec in self.config.sections():
+                if key_name in self.config[sec]:
+                    return self.config[sec][key_name]
 
         raise KeyError(f"❌ Key '{key_name}' not found")
 
 
-# GLOBAL SINGLETON CONFIG
+# GLOBAL SINGLETON
 config = Config()

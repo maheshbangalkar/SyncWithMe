@@ -13,10 +13,14 @@ from Common import Constant as c
 class SheetClass:
     def __init__(self):
 
-        # Reliable Cloud Detection
-        self.is_streamlit_cloud = os.getenv("STREAMLIT_RUNTIME_ENVIRONMENT") == "cloud"
+        self.is_streamlit_cloud = False
+        try:
+            if hasattr(st, "secrets") and len(st.secrets) > 0:
+                self.is_streamlit_cloud = True
+        except:
+            self.is_streamlit_cloud = False
 
-        # Load Sheet Settings
+        # Load sheet settings
         self.spreadsheet_id = config.fetch_sheet_value("SPREADSHEET_ID")
         self.sheet_name = config.fetch_sheet_value("SHEET_NAME")
 
@@ -29,16 +33,16 @@ class SheetClass:
         self._authenticate_and_load_sheet()
 
     # -------------------------------------------------------
-    # Authentication + Sheet Load
+    # Authenticate + Load Sheet
     # -------------------------------------------------------
     def _authenticate_and_load_sheet(self):
         try:
             if self.is_streamlit_cloud:
-                logging.info("Using Streamlit Cloud Google credentials")
+                logging.info("Using Streamlit Cloud credentials")
 
                 service_info = st.secrets.get("google_service_account")
                 if not service_info:
-                    raise ValueError("❌ google_service_account missing in Streamlit Secrets")
+                    raise ValueError("❌ Missing [google_service_account] in st.secrets")
 
                 credentials = Credentials.from_service_account_info(
                     service_info, scopes=self.scopes
@@ -56,13 +60,13 @@ class SheetClass:
                 )
 
                 if not os.path.exists(service_file):
-                    raise FileNotFoundError(f"❌ Service Account JSON missing at: {service_file}")
+                    raise FileNotFoundError(f"❌ Missing Service Account JSON at: {service_file}")
 
                 credentials = Credentials.from_service_account_file(
                     service_file, scopes=self.scopes
                 )
 
-            # Connect to Google Sheets
+            # Connect to sheet
             client = gspread.authorize(credentials)
             self.sheet = client.open_by_key(self.spreadsheet_id).worksheet(self.sheet_name)
 
@@ -83,7 +87,7 @@ class SheetClass:
         return letters
 
     # -------------------------------------------------------
-    # Add Border Formatting
+    # Apply Border Formatting
     # -------------------------------------------------------
     def add_all_borders_to_row(self, row_number):
         try:
@@ -93,18 +97,19 @@ class SheetClass:
                 return
 
             last_col_letter = self._convert_to_column_letter(last_col_index)
-
             b = Border(c.SOLID_BORDER)
-            border_format = CellFormat(borders=Borders(top=b, bottom=b, left=b, right=b))
+            border_format = CellFormat(
+                borders=Borders(top=b, bottom=b, left=b, right=b)
+            )
 
             range_str = f"A{row_number}:{last_col_letter}{row_number}"
             format_cell_range(self.sheet, range_str, border_format)
 
         except Exception as e:
-            logging.error(f"❌ Border Formatting Error: {e}")
+            logging.error(f"❌ Border Error: {e}")
 
     # -------------------------------------------------------
-    # Get Next Serial No.
+    # Serial Number
     # -------------------------------------------------------
     def get_next_sr_no(self):
         try:
@@ -127,7 +132,6 @@ class SheetClass:
             sr_no = self.get_next_sr_no()
             datestamp = datetime.now().strftime(c.DATE_FORMAT)
 
-            # Determine status
             if isinstance(response, str) or isinstance(response, Exception):
                 status = c.FAILED
                 bot_text_safe = str(response)
@@ -146,10 +150,10 @@ class SheetClass:
 
             self.sheet.append_row(row_data)
 
-            new_row_index = len(self.sheet.get_all_values())
-            self.add_all_borders_to_row(new_row_index)
+            new_row = len(self.sheet.get_all_values())
+            self.add_all_borders_to_row(new_row)
 
-            logging.info("✅ Row saved successfully")
+            logging.info("✅ Row saved")
 
         except Exception as e:
-            logging.error(f"❌ Failed to append row: {e}")
+            logging.error(f"❌ Failed to save row: {e}")
