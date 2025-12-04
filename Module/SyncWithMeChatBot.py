@@ -49,6 +49,7 @@ class SyncWithMeChatBot:
         # -------------------------------------------------------------
         try:
             sys_ins = config.get_system_instruction()
+            logging.info(f"SYSTEM INSTRUCTION : {sys_ins}")
         except Exception as e:
             logging.warning(f"Error loading system instruction: {e}")
             sys_ins = None
