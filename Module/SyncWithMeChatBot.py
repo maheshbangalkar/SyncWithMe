@@ -79,7 +79,10 @@ class SyncWithMeChatBot:
                     max_output_tokens=c.MAX_OUTPUT_TOKEN_LENGTH,
                     tools=[types.Tool(google_search=types.GoogleSearch())],
                     thinking_config=thinking_config,
-                    system_instruction=sys_ins,
+                    system_instruction=types.Content(
+                        role="system",
+                        parts=[types.Part(text=sys_ins or "")]
+                    ),
                 )
             )
         except Exception as api_error:
