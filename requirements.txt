@@ -3,3 +3,4 @@ gspread
 streamlit
 gspread_formatting
 dotenv
+colorama==0.4.6
