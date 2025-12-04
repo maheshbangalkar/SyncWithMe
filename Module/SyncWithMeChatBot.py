@@ -1,3 +1,4 @@
+import streamlit as st
 from google.genai import types
 from Common.Logger_Config import logging
 from Common.Common_Functions import CommonFunctions as common
@@ -12,8 +13,8 @@ class SyncWithMeChatBot:
         """
         self.client = client
         self.model = model
-        self.sheet_data = sheet      # Instance of SheetClass OR None
-        self.session_history = []    # Stores conversation context
+        self.sheet_data = sheet
+        self.session_history = []
 
     # =====================================================================
     # Generate Chatbot Response
@@ -38,15 +39,10 @@ class SyncWithMeChatBot:
                     thinking_budget=c.MODEL_THINKING_BUDGET
                 )
                 is_think = True
-            else:
-                thinking_config = None
-        except Exception as e:
-            logging.warning(f"Error configuring thinking mode: {e}")
-            thinking_config = None
+        except:
+            pass
 
-        # -------------------------------------------------------------
-        # SYSTEM INSTRUCTION (from Secrets folder or Streamlit Secrets)
-        # -------------------------------------------------------------
+        # SYSTEM INSTRUCTION
         try:
             sys_ins = config.get_system_instruction()
             logging.info(f"SYSTEM INSTRUCTION : {sys_ins}")
@@ -58,32 +54,24 @@ class SyncWithMeChatBot:
         # 🔍 DEBUG
         # -------------------------------------------------------------
         try:
-            import streamlit as st
             st.write("🔍 sys_ins =", sys_ins)
             st.write("🔍 type(sys_ins) =", str(type(sys_ins)))
-
             logging.info(f"🔍 sys_ins (debug) = {sys_ins}")
             logging.info(f"🔍 type(sys_ins) = {type(sys_ins)}")
+        except Exception as e:
+            logging.warning(f"Debug print failed: {e}")
 
-        except Exception as debug_error:
-            logging.warning(f"Debug print failed: {debug_error}")
-
-        # -------------------------------------------------------------
-        # UPDATE CONTEXT HISTORY
-        # -------------------------------------------------------------
+        # CONTEXT
         self.session_history.append({"user": question, "assistant": ""})
         context_history = self.session_history[-c.MAX_CONTEXT:]
 
         # Build context string for LLM
         try:
             context_text = common.build_context_text(context_history)
-        except Exception as e:
-            logging.error(f"Error building context: {e}")
+        except:
             context_text = question
 
-        # -------------------------------------------------------------
-        # CALL GOOGLE GENAI
-        # -------------------------------------------------------------
+        # API CALL
         try:
             response = self.client.models.generate_content(
                 model=self.model,
@@ -94,11 +82,11 @@ class SyncWithMeChatBot:
                     tools=[types.Tool(google_search=types.GoogleSearch())],
                     thinking_config=thinking_config,
 
-                    # System Instruction (Content format)
+                    # ALWAYS SEND SYSTEM INSTRUCTION
                     system_instruction=types.Content(
                         role="system",
                         parts=[types.Part(text=sys_ins or "")]
-                    ),
+                    )
                 )
             )
         except Exception as api_error:
@@ -116,9 +104,7 @@ class SyncWithMeChatBot:
 
             return "Sorry, there was an error communicating with the model."
 
-        # -------------------------------------------------------------
-        # EXTRACT TEXT RESPONSE
-        # -------------------------------------------------------------
+        # EXTRACT TEXT
         try:
             bot_text = ""
 
@@ -129,14 +115,13 @@ class SyncWithMeChatBot:
             # Fallback: candidates/parts API
             elif hasattr(response, "candidates") and response.candidates:
                 for part in response.candidates[0].content.parts:
-                    if hasattr(part, "text") and part.text:
+                    if hasattr(part, "text"):
                         bot_text += part.text
                 bot_text = bot_text.strip()
 
             else:
                 bot_text = "I'm sorry, I couldn't generate a proper response."
 
-            # Save assistant response into session history
             self.session_history[-1]["assistant"] = bot_text
 
             # Format output
