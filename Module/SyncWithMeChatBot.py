@@ -55,6 +55,20 @@ class SyncWithMeChatBot:
             sys_ins = None
 
         # -------------------------------------------------------------
+        # 🔍 DEBUG
+        # -------------------------------------------------------------
+        try:
+            import streamlit as st
+            st.write("🔍 sys_ins =", sys_ins)
+            st.write("🔍 type(sys_ins) =", str(type(sys_ins)))
+
+            logging.info(f"🔍 sys_ins (debug) = {sys_ins}")
+            logging.info(f"🔍 type(sys_ins) = {type(sys_ins)}")
+
+        except Exception as debug_error:
+            logging.warning(f"Debug print failed: {debug_error}")
+
+        # -------------------------------------------------------------
         # UPDATE CONTEXT HISTORY
         # -------------------------------------------------------------
         self.session_history.append({"user": question, "assistant": ""})
@@ -68,7 +82,7 @@ class SyncWithMeChatBot:
             context_text = question
 
         # -------------------------------------------------------------
-        # CALL GOOGLE GENAI (new API format)
+        # CALL GOOGLE GENAI
         # -------------------------------------------------------------
         try:
             response = self.client.models.generate_content(
@@ -79,6 +93,8 @@ class SyncWithMeChatBot:
                     max_output_tokens=c.MAX_OUTPUT_TOKEN_LENGTH,
                     tools=[types.Tool(google_search=types.GoogleSearch())],
                     thinking_config=thinking_config,
+
+                    # System Instruction (Content format)
                     system_instruction=types.Content(
                         role="system",
                         parts=[types.Part(text=sys_ins or "")]
@@ -123,13 +139,13 @@ class SyncWithMeChatBot:
             # Save assistant response into session history
             self.session_history[-1]["assistant"] = bot_text
 
-            # Format pretty response text (removes raw JSON parts)
+            # Format output
             formatted_response = common.format_template(
                 c.FORMATTED_RESPONSE_TEMPLATE,
                 {"question": question, "answer": bot_text}
             )
 
-            # Usage stats extraction
+            # Usage stats
             usage = response.usage_metadata
             formatted_usage = common.format_template(
                 c.FORMATTED_RESPONSE_USAGE_TEMPLATE,
@@ -141,9 +157,7 @@ class SyncWithMeChatBot:
                 }
             )
 
-            # ---------------------------------------------------------
-            # SAVE TO GOOGLE SHEET (instance method, not static)
-            # ---------------------------------------------------------
+            # Save logs to Google Sheet
             if self.sheet_data:
                 try:
                     self.sheet_data.save_question_response(
@@ -164,7 +178,6 @@ class SyncWithMeChatBot:
     # UTILITY FUNCTIONS
     # =====================================================================
     def run_chatbot(self):
-        """Standalone terminal chatbot."""
         print(f"Welcome to SyncWithMeChatBot! Using model: {self.model}")
         while True:
             user_input = input("You: ")
