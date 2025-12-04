@@ -45,30 +45,21 @@ class SyncWithMeChatBot:
         # SYSTEM INSTRUCTION
         try:
             sys_ins = config.get_system_instruction()
-            logging.info(f"SYSTEM INSTRUCTION : {sys_ins}")
         except Exception as e:
             logging.warning(f"Error loading system instruction: {e}")
             sys_ins = None
 
         # -------------------------------------------------------------
-        # 🔍 DEBUG
+        # UPDATE CONTEXT HISTORY
         # -------------------------------------------------------------
-        try:
-            st.write("🔍 sys_ins =", sys_ins)
-            st.write("🔍 type(sys_ins) =", str(type(sys_ins)))
-            logging.info(f"🔍 sys_ins (debug) = {sys_ins}")
-            logging.info(f"🔍 type(sys_ins) = {type(sys_ins)}")
-        except Exception as e:
-            logging.warning(f"Debug print failed: {e}")
-
-        # CONTEXT
         self.session_history.append({"user": question, "assistant": ""})
         context_history = self.session_history[-c.MAX_CONTEXT:]
 
         # Build context string for LLM
         try:
             context_text = common.build_context_text(context_history)
-        except:
+        except Exception as e:
+            logging.error(f"Error building context: {e}")
             context_text = question
 
         # API CALL
