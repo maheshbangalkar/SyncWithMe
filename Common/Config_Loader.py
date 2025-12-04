@@ -12,7 +12,6 @@ class Config:
 
         self.is_streamlit_cloud = False
         try:
-            # Streamlit Cloud: st.secrets is ALWAYS non-empty
             if hasattr(st, "secrets") and len(st.secrets) > 0:
                 self.is_streamlit_cloud = True
         except:
@@ -117,26 +116,45 @@ class Config:
     def get_system_instruction(self):
         try:
             if self.is_streamlit_cloud:
-                if "SYSTEM_INSTRUCTION_FILE" in st.secrets:
-                    inst = st.secrets["SYSTEM_INSTRUCTION_FILE"].get("SYSTEM_INSTRUCTION")
+                logging.info("🔍 Loading SYSTEM_INSTRUCTION from Streamlit Secrets...")
+
+                possible_tables = [
+                    "SYSTEM_INSTRUCTION_FILE",
+                    "system_instruction_file",
+                ]
+                table = None
+
+                for key in possible_tables:
+                    if key in st.secrets:
+                        table = st.secrets[key]
+                        logging.info(f"✅ Found SYSTEM_INSTRUCTION table: {key}")
+                        break
+
+                if table:
+                    inst = table.get("SYSTEM_INSTRUCTION") or table.get("system_instruction")
                     if inst:
+                        logging.info("✅ SYSTEM_INSTRUCTION loaded successfully from Streamlit.")
                         return inst.strip()
-                logging.warning("SYSTEM_INSTRUCTION_FILE not found in Streamlit secrets")
+
+                logging.warning("❌ SYSTEM_INSTRUCTION not found inside Streamlit secrets table.")
                 return None
 
-            # Local Machine
+            # -----------------------------------------------------
+            # LOCAL ENVIRONMENT MODE
+            # -----------------------------------------------------
             BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             file_path = os.path.join(BASE_DIR, "Secrets", "SYSTEM_INSTRUCTION.txt")
 
             if os.path.exists(file_path):
+                logging.info(f"📄 Loading local SYSTEM_INSTRUCTION from {file_path}")
                 with open(file_path, "r", encoding="utf-8") as f:
                     return f.read().strip()
 
-            logging.warning(f"SYSTEM_INSTRUCTION.txt not found at: {file_path}")
+            logging.warning(f"⚠ SYSTEM_INSTRUCTION.txt not found at: {file_path}")
             return None
 
         except Exception as e:
-            logging.error(f"Error loading system instruction: {e}")
+            logging.error(f"❌ Error loading system instruction: {e}")
             return None
 
     # ------------------------------------------------------------
