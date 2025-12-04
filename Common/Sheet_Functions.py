@@ -12,17 +12,11 @@ from Common import Constant as c
 
 class SheetClass:
     def __init__(self):
-        """
-        Initializes Google Sheet Manager.
-        Automatically detects:
-        - Streamlit Cloud → use st.secrets
-        - Local environment → load JSON file from Secrets folder
-        """
 
-        # Reliable Cloud detection
-        self.is_streamlit_cloud = "streamlit" in os.getenv("HOME", "").lower()
+        # Reliable Cloud Detection
+        self.is_streamlit_cloud = os.getenv("STREAMLIT_RUNTIME_ENVIRONMENT") == "cloud"
 
-        # Load Sheet Config
+        # Load Sheet Settings
         self.spreadsheet_id = config.fetch_sheet_value("SPREADSHEET_ID")
         self.sheet_name = config.fetch_sheet_value("SHEET_NAME")
 
@@ -35,63 +29,51 @@ class SheetClass:
         self._authenticate_and_load_sheet()
 
     # -------------------------------------------------------
-    # Authenticate & Load Sheet
+    # Authentication + Sheet Load
     # -------------------------------------------------------
     def _authenticate_and_load_sheet(self):
         try:
             if self.is_streamlit_cloud:
-                logging.info("Using Streamlit Cloud credentials for Google Sheets")
+                logging.info("Using Streamlit Cloud Google credentials")
 
-                # Load credentials from st.secrets
                 service_info = st.secrets.get("google_service_account")
                 if not service_info:
-                    raise ValueError(
-                        "Missing [google_service_account] section in Streamlit Secrets"
-                    )
+                    raise ValueError("❌ google_service_account missing in Streamlit Secrets")
 
                 credentials = Credentials.from_service_account_info(
                     service_info, scopes=self.scopes
                 )
 
             else:
-                logging.info("Using local JSON credentials from Secrets folder")
+                logging.info("Using Local Google JSON credentials")
 
-                # Secrets directory (local only)
                 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 SECRETS_DIR = os.path.join(BASE_DIR, "Secrets")
 
-                if not os.path.exists(SECRETS_DIR):
-                    raise FileNotFoundError(
-                        f"Secrets folder missing at: {SECRETS_DIR}"
-                    )
+                service_file = os.path.join(
+                    SECRETS_DIR,
+                    config.fetch_sheet_value("SERVICE_ACCOUNT_FILE")
+                )
 
-                # JSON File name from config
-                service_file_name = config.fetch_sheet_value("SERVICE_ACCOUNT_FILE")
-                service_account_file = os.path.join(SECRETS_DIR, service_file_name)
-
-                if not os.path.exists(service_account_file):
-                    raise FileNotFoundError(
-                        f"Service Account file missing: {service_account_file}"
-                    )
+                if not os.path.exists(service_file):
+                    raise FileNotFoundError(f"❌ Service Account JSON missing at: {service_file}")
 
                 credentials = Credentials.from_service_account_file(
-                    service_account_file, scopes=self.scopes
+                    service_file, scopes=self.scopes
                 )
 
             # Connect to Google Sheets
             client = gspread.authorize(credentials)
-            self.sheet = client.open_by_key(self.spreadsheet_id).worksheet(
-                self.sheet_name
-            )
+            self.sheet = client.open_by_key(self.spreadsheet_id).worksheet(self.sheet_name)
 
-            logging.info(f"Successfully accessed sheet: {self.sheet_name}")
+            logging.info(f"✅ Google Sheet Loaded: {self.sheet_name}")
 
         except Exception as e:
-            logging.error(f"Error loading Google Sheet: {e}")
+            logging.error(f"❌ Error loading Google Sheet: {e}")
             raise
 
     # -------------------------------------------------------
-    # Convert numeric col → Excel letter
+    # Column Number → Letter
     # -------------------------------------------------------
     def _convert_to_column_letter(self, col):
         letters = ""
@@ -101,7 +83,7 @@ class SheetClass:
         return letters
 
     # -------------------------------------------------------
-    # Apply borders to new row
+    # Add Border Formatting
     # -------------------------------------------------------
     def add_all_borders_to_row(self, row_number):
         try:
@@ -111,19 +93,18 @@ class SheetClass:
                 return
 
             last_col_letter = self._convert_to_column_letter(last_col_index)
+
             b = Border(c.SOLID_BORDER)
-            border_format = CellFormat(
-                borders=Borders(top=b, bottom=b, left=b, right=b)
-            )
+            border_format = CellFormat(borders=Borders(top=b, bottom=b, left=b, right=b))
 
             range_str = f"A{row_number}:{last_col_letter}{row_number}"
             format_cell_range(self.sheet, range_str, border_format)
 
         except Exception as e:
-            logging.error(f"Error applying ALL borders: {e}")
+            logging.error(f"❌ Border Formatting Error: {e}")
 
     # -------------------------------------------------------
-    # Get next serial no.
+    # Get Next Serial No.
     # -------------------------------------------------------
     def get_next_sr_no(self):
         try:
@@ -131,53 +112,36 @@ class SheetClass:
             if len(values) <= 1:
                 return 1
             return int(values[-1]) + 1
-        except Exception as e:
-            logging.error(f"Error getting serial number: {e}")
+        except:
             return 1
 
     # -------------------------------------------------------
-    # Save Question + Response to Sheet
+    # Save Entry
     # -------------------------------------------------------
     def save_question_response(
-        self,
-        question,
-        is_think,
-        model_used,
-        response=c.NA,
-        bot_text=c.NA,
-        formatted_response=None,
-        formatted_usage=None,
-    ):
+        self, question, is_think, model_used,
+        response=c.NA, bot_text=c.NA,
+        formatted_response=None, formatted_usage=None):
+
         try:
             sr_no = self.get_next_sr_no()
             datestamp = datetime.now().strftime(c.DATE_FORMAT)
 
             # Determine status
-            status = c.RECEIVED if (response and not isinstance(response, str)) else c.FAILED
-
-            if (
-                isinstance(response, str)
-                or isinstance(response, Exception)
-                or (c.ERROR.lower() in str(response).lower())
-            ):
+            if isinstance(response, str) or isinstance(response, Exception):
+                status = c.FAILED
                 bot_text_safe = str(response)
                 formatted_safe = c.NO_RESPONSE
-                status = c.FAILED
             else:
-                bot_text_safe = bot_text if bot_text else response
-                formatted_safe = formatted_response if formatted_response else response
                 status = c.RECEIVED
+                bot_text_safe = bot_text or response
+                formatted_safe = formatted_response or response
 
             row_data = [
-                sr_no,
-                question,
-                is_think,
-                model_used,
-                bot_text_safe,
-                status,
-                datestamp,
-                formatted_safe,
-                formatted_usage,
+                sr_no, question, is_think,
+                model_used, bot_text_safe,
+                status, datestamp,
+                formatted_safe, formatted_usage
             ]
 
             self.sheet.append_row(row_data)
@@ -185,8 +149,7 @@ class SheetClass:
             new_row_index = len(self.sheet.get_all_values())
             self.add_all_borders_to_row(new_row_index)
 
-            logging.info("Data Saved Successfully")
+            logging.info("✅ Row saved successfully")
 
         except Exception as e:
-            logging.error(f"Failed to append row: {e}")
-            print("Failed to save. Please try again later.")
+            logging.error(f"❌ Failed to append row: {e}")
