@@ -15,23 +15,21 @@ class SheetClass:
         """
         Initializes Google Sheet Manager.
         Automatically detects:
-        - Local environment → use Secrets folder files
         - Streamlit Cloud → use st.secrets
+        - Local environment → load JSON file from Secrets folder
         """
 
-        self.is_streamlit_cloud = os.getenv("STREAMLIT_DEPLOYMENT") == "cloud"
+        # Reliable Cloud detection
+        self.is_streamlit_cloud = "streamlit" in os.getenv("HOME", "").lower()
 
-        # Load sheet config from Config Loader
+        # Load Sheet Config
         self.spreadsheet_id = config.fetch_sheet_value("SPREADSHEET_ID")
         self.sheet_name = config.fetch_sheet_value("SHEET_NAME")
 
         raw_scopes = config.fetch_sheet_value("SCOPES")
-
-        # Streamlit Secrets uses list for scopes, local uses comma separated
-        if isinstance(raw_scopes, list):
-            self.scopes = raw_scopes
-        else:
-            self.scopes = [s.strip() for s in raw_scopes.split(",")]
+        self.scopes = raw_scopes if isinstance(raw_scopes, list) else [
+            s.strip() for s in raw_scopes.split(",")
+        ]
 
         self.sheet = None
         self._authenticate_and_load_sheet()
@@ -44,37 +42,47 @@ class SheetClass:
             if self.is_streamlit_cloud:
                 logging.info("Using Streamlit Cloud credentials for Google Sheets")
 
-                # Use Google credentials from st.secrets (already TOML formatted)
+                # Load credentials from st.secrets
                 service_info = st.secrets.get("google_service_account")
                 if not service_info:
-                    raise ValueError("Missing [google_service_account] in Streamlit Secrets")
+                    raise ValueError(
+                        "Missing [google_service_account] section in Streamlit Secrets"
+                    )
 
                 credentials = Credentials.from_service_account_info(
-                    service_info,
-                    scopes=self.scopes
+                    service_info, scopes=self.scopes
                 )
 
             else:
                 logging.info("Using local JSON credentials from Secrets folder")
 
-                # Fix BASE_DIR path
+                # Secrets directory (local only)
                 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 SECRETS_DIR = os.path.join(BASE_DIR, "Secrets")
 
+                if not os.path.exists(SECRETS_DIR):
+                    raise FileNotFoundError(
+                        f"Secrets folder missing at: {SECRETS_DIR}"
+                    )
+
+                # JSON File name from config
                 service_file_name = config.fetch_sheet_value("SERVICE_ACCOUNT_FILE")
                 service_account_file = os.path.join(SECRETS_DIR, service_file_name)
 
                 if not os.path.exists(service_account_file):
-                    raise FileNotFoundError(f"Service Account file missing: {service_account_file}")
+                    raise FileNotFoundError(
+                        f"Service Account file missing: {service_account_file}"
+                    )
 
                 credentials = Credentials.from_service_account_file(
-                    service_account_file,
-                    scopes=self.scopes
+                    service_account_file, scopes=self.scopes
                 )
 
             # Connect to Google Sheets
             client = gspread.authorize(credentials)
-            self.sheet = client.open_by_key(self.spreadsheet_id).worksheet(self.sheet_name)
+            self.sheet = client.open_by_key(self.spreadsheet_id).worksheet(
+                self.sheet_name
+            )
 
             logging.info(f"Successfully accessed sheet: {self.sheet_name}")
 
@@ -104,7 +112,9 @@ class SheetClass:
 
             last_col_letter = self._convert_to_column_letter(last_col_index)
             b = Border(c.SOLID_BORDER)
-            border_format = CellFormat(borders=Borders(top=b, bottom=b, left=b, right=b))
+            border_format = CellFormat(
+                borders=Borders(top=b, bottom=b, left=b, right=b)
+            )
 
             range_str = f"A{row_number}:{last_col_letter}{row_number}"
             format_cell_range(self.sheet, range_str, border_format)
@@ -113,7 +123,7 @@ class SheetClass:
             logging.error(f"Error applying ALL borders: {e}")
 
     # -------------------------------------------------------
-    # Get next serial number
+    # Get next serial no.
     # -------------------------------------------------------
     def get_next_sr_no(self):
         try:
@@ -126,12 +136,18 @@ class SheetClass:
             return 1
 
     # -------------------------------------------------------
-    # Save Question + Response to Google Sheet
+    # Save Question + Response to Sheet
     # -------------------------------------------------------
-    def save_question_response(self, question, is_think, model_used,
-                               response=c.NA, bot_text=c.NA,
-                               formatted_response=None, formatted_usage=None):
-
+    def save_question_response(
+        self,
+        question,
+        is_think,
+        model_used,
+        response=c.NA,
+        bot_text=c.NA,
+        formatted_response=None,
+        formatted_usage=None,
+    ):
         try:
             sr_no = self.get_next_sr_no()
             datestamp = datetime.now().strftime(c.DATE_FORMAT)
@@ -139,7 +155,11 @@ class SheetClass:
             # Determine status
             status = c.RECEIVED if (response and not isinstance(response, str)) else c.FAILED
 
-            if isinstance(response, str) or isinstance(response, Exception) or (c.ERROR.lower() in str(response).lower()):
+            if (
+                isinstance(response, str)
+                or isinstance(response, Exception)
+                or (c.ERROR.lower() in str(response).lower())
+            ):
                 bot_text_safe = str(response)
                 formatted_safe = c.NO_RESPONSE
                 status = c.FAILED
@@ -149,9 +169,15 @@ class SheetClass:
                 status = c.RECEIVED
 
             row_data = [
-                sr_no, question, is_think, model_used,
-                bot_text_safe, status, datestamp,
-                formatted_safe, formatted_usage
+                sr_no,
+                question,
+                is_think,
+                model_used,
+                bot_text_safe,
+                status,
+                datestamp,
+                formatted_safe,
+                formatted_usage,
             ]
 
             self.sheet.append_row(row_data)

@@ -10,7 +10,8 @@ import streamlit as st
 class Config:
     def __init__(self, config_path=None):
 
-        self.is_streamlit_cloud = os.getenv("STREAMLIT_DEPLOYMENT") == "cloud"
+        # Reliable Cloud detection
+        self.is_streamlit_cloud = "streamlit" in os.getenv("HOME", "").lower()
 
         if self.is_streamlit_cloud:
             logging.info("Running on Streamlit Cloud → Using st.secrets")
@@ -25,18 +26,17 @@ class Config:
     def _load_streamlit_secrets(self):
 
         # API Key
-        if "GEMINI_API_KEY" not in st.secrets:
+        self.api_key = st.secrets.get("GEMINI_API_KEY")
+        if not self.api_key:
             raise KeyError("GEMINI_API_KEY missing in Streamlit Secrets")
 
-        self.api_key = st.secrets["GEMINI_API_KEY"]
-
-        # Load MODEL and SHEET sections safely
+        # Model & Sheet sections
         self.config = {
             "MODEL": dict(st.secrets.get("MODEL", {})),
             "SHEET": dict(st.secrets.get("SHEET", {}))
         }
 
-        # Google Service Account JSON (if present)
+        # Service Account JSON
         self.google_creds = st.secrets.get("google_service_account", None)
 
     # ------------------------------------------------------------
@@ -44,7 +44,6 @@ class Config:
     # ------------------------------------------------------------
     def _load_local_secrets(self, config_path):
 
-        # Correct path: go up 2 folders, not 3
         BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         SECRETS_DIR = os.path.join(BASE_DIR, "Secrets")
 
@@ -69,19 +68,19 @@ class Config:
         self.config = configparser.ConfigParser()
         self.config.read(config_path)
 
-        # Load API key
-        self.api_key = os.getenv("GEMINI_API_KEY") or self.config["API"].get("GEMINI_API_KEY")
+        # API Key
+        self.api_key = (
+            os.getenv("GEMINI_API_KEY")
+            or self.config["API"].get("GEMINI_API_KEY")
+        )
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY missing in .env or Config.ini")
 
-        # Load Google service account file
+        # Google service account file
         sa_path = os.path.join(SECRETS_DIR, "Service_Account.json")
-        if os.path.exists(sa_path):
-            with open(sa_path, "r") as f:
-                self.google_creds = json.load(f)
-        else:
-            self.google_creds = None
-
+        self.google_creds = (
+            json.load(open(sa_path)) if os.path.exists(sa_path) else None
+        )
 
     # ------------------------------------------------------------
     # Create Gemini Client
@@ -97,10 +96,11 @@ class Config:
     # ------------------------------------------------------------
     def get_model(self, model_name):
 
-        if self.is_streamlit_cloud:
-            model_section = self.config.get("MODEL", {})
-        else:
-            model_section = self.config["MODEL"]
+        model_section = (
+            self.config.get("MODEL", {})
+            if self.is_streamlit_cloud
+            else self.config["MODEL"]
+        )
 
         if model_name not in model_section:
             raise ValueError(f"Model not found: {model_name}")
@@ -111,18 +111,15 @@ class Config:
     # Load System Instruction
     # ------------------------------------------------------------
     def get_system_instruction(self):
-
         try:
             if self.is_streamlit_cloud:
                 return st.secrets.get("SYSTEM_INSTRUCTION", None)
 
-            # Local file (FIXED PATH)
             BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             sys_file = os.path.join(BASE_DIR, "Secrets", "SYSTEM_INSTRUCTION.txt")
 
             if os.path.exists(sys_file):
-                with open(sys_file, "r", encoding="utf-8") as f:
-                    return f.read().strip()
+                return open(sys_file, "r", encoding="utf-8").read().strip()
 
             logging.warning(f"SYSTEM_INSTRUCTION.txt not found at: {sys_file}")
             return None
@@ -135,8 +132,7 @@ class Config:
     # Fetch sheet value
     # ------------------------------------------------------------
     def fetch_sheet_value(self, key):
-        section = self.config["SHEET"]
-        return section.get(key)
+        return self.config["SHEET"].get(key)
 
     # ------------------------------------------------------------
     # Fetch Any Key
@@ -144,13 +140,11 @@ class Config:
     def fetch_key_value(self, key_name):
 
         if self.is_streamlit_cloud:
-            # Iterate through dict sections
             for section in self.config.values():
                 if key_name in section:
                     return section[key_name]
 
         else:
-            # Iterate through INI sections
             for section in self.config.sections():
                 if key_name in self.config[section]:
                     return self.config[section][key_name]
