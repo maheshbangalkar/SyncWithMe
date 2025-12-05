@@ -110,15 +110,15 @@ with st.sidebar:
     for i, msg in enumerate(st.session_state["messages"]):
         if msg["role"] == "user":
             preview = msg["content"][:30] + ("..." if len(msg["content"]) > 30 else "")
-            st.markdown(
-                f"""
-                <div class="history-btn" title="{msg['content']}" 
-                     onclick="window.parent.postMessage({{'history_click': {i}}}, '*');">
-                    {preview}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+
+            html = f"""
+<div class="history-btn"
+     title="{msg['content']}"
+     onclick="window.parent.postMessage({{'history_click': {i}}}, '*');">
+    {preview}
+</div>
+"""
+            st.markdown(html.strip(), unsafe_allow_html=True)
 
 # =========================================================
 # Display chat messages
