@@ -1,7 +1,7 @@
 import streamlit as st
 import sys
 import os
-
+import html
 # =========================================================
 # Setup paths FIRST (so page_icon can use them)
 # =========================================================
@@ -109,17 +109,20 @@ with st.sidebar:
 
     for i, msg in enumerate(st.session_state["messages"]):
         if msg["role"] == "user":
-            preview = msg["content"][:30] + ("..." if len(msg["content"]) > 30 else "")
+            full_message = msg["content"]
+            full_message_clean = full_message.replace("\n", " ").replace("\r", " ")
+            safe_full = html.escape(full_message_clean)
+            preview = full_message_clean[:30] + ("..." if len(full_message_clean) > 30 else "")
 
-            html = f"""
-<div class="history-btn"
-     title="{msg['content']}"
-     onclick="window.parent.postMessage({{'history_click': {i}}}, '*');">
-    {preview}
-</div>
-"""
-            st.markdown(html.strip(), unsafe_allow_html=True)
-
+            html_code = f"""
+            <div class="history-btn"
+                title='{safe_full}'
+                style="cursor:pointer;"
+                onclick="window.parent.postMessage({{'history_click': {i}}}, '*');">
+                {preview}
+            </div>
+            """
+            st.markdown(html_code, unsafe_allow_html=True)
 # =========================================================
 # Display chat messages
 # =========================================================
