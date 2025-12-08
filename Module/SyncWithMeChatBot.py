@@ -1,6 +1,15 @@
+
 import streamlit as st
-from google.genai import types
 from Common.Logger_Config import logging
+
+from google.genai.types import (
+    GenerateContentConfig,
+    GoogleSearch,
+    Tool,
+    Content,
+    Part,
+)
+
 from Common.Common_Functions import CommonFunctions as common
 from Common import Constant as c
 from Common.Config_Loader import config
@@ -31,54 +40,48 @@ class SyncWithMeChatBot:
         is_think = False
         thinking_config = None
 
-        try:
-            # PRO models FORCE thinking mode
-            if c.PRO_MODEL in self.model or thinking_mode is True:
-                thinking_config = types.ThinkingConfig(
-                    include_thoughts=True,
-                    thinking_budget=c.MODEL_THINKING_BUDGET
-                )
-                is_think = True
-        except:
-            pass
+        if (c.PRO_MODEL in self.model.lower()) or thinking_mode:
+            is_think = True
+            thinking_config = {
+                "include_thoughts": True,
+                "thinking_budget": c.MODEL_THINKING_BUDGET,
+            }
 
         # SYSTEM INSTRUCTION
         try:
-            sys_ins = config.get_system_instruction()
+            sys_ins = config.get_system_instruction() or ""
         except Exception as e:
             logging.warning(f"Error loading system instruction: {e}")
             sys_ins = None
 
         # -------------------------------------------------------------
-        # UPDATE CONTEXT HISTORY
+        # BUILD CONTEXT HISTORY
         # -------------------------------------------------------------
         self.session_history.append({"user": question, "assistant": ""})
-        context_history = self.session_history[-c.MAX_CONTEXT:]
+        context_text = common.build_context_text(
+            self.session_history[-c.MAX_CONTEXT:]
+        )
 
-        # Build context string for LLM
-        try:
-            context_text = common.build_context_text(context_history)
-        except Exception as e:
-            logging.error(f"Error building context: {e}")
-            context_text = question
+        # -------------------------------------------------------------
+        # GOOGLE SEARCH TOOL
+        # -------------------------------------------------------------
+        tools = [Tool(google_search=GoogleSearch())]
 
         # API CALL
         try:
             response = self.client.models.generate_content(
                 model=self.model,
                 contents=context_text,
-                config=types.GenerateContentConfig(
+                config=GenerateContentConfig(
                     temperature=0.5,
                     max_output_tokens=c.MAX_OUTPUT_TOKEN_LENGTH,
-                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                    tools=tools,
                     thinking_config=thinking_config,
-
-                    # ALWAYS SEND SYSTEM INSTRUCTION
-                    system_instruction=types.Content(
+                    system_instruction=Content(
                         role="system",
-                        parts=[types.Part(text=sys_ins or "")]
-                    )
-                )
+                        parts=[Part(text=sys_ins)],
+                    ),
+                ),
             )
         except Exception as api_error:
             logging.error(f"Error calling generate_content API: {api_error}", exc_info=True)
@@ -154,7 +157,7 @@ class SyncWithMeChatBot:
     # UTILITY FUNCTIONS
     # =====================================================================
     def run_chatbot(self):
-        print(f"Welcome to SyncWithMeChatBot! Using model: {self.model}")
+        print(f"Welcome to SyncWithMe ChatBot! Using model: {self.model}")
         while True:
             user_input = input("You: ")
             if user_input.lower() in ["exit", "quit", "q", "x"]:

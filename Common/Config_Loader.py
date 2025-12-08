@@ -2,7 +2,7 @@ import os
 import json
 import configparser
 from dotenv import load_dotenv
-from google import genai
+from google.genai.client import Client
 from Common.Logger_Config import logging
 import streamlit as st
 
@@ -101,7 +101,7 @@ class Config:
     # ------------------------------------------------------------
     def get_client(self):
         try:
-            return genai.Client(api_key=self.api_key)
+            return Client(api_key=self.api_key)
         except Exception as e:
             raise RuntimeError(f"❌ Failed to initialize Gemini client: {e}")
 
