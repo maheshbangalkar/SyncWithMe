@@ -2,13 +2,6 @@ import streamlit as st
 import sys
 import os
 import html
-from PIL import Image
-
-# import project modules
-from Common.Config_Loader import config
-from Module.SyncWithMeChatBot import SyncWithMeChatBot
-from Common.Sheet_Functions import SheetClass as sc
-from Common import Constant as c
 
 # Path setup for page_icon to use
 CURRENT_FILE = os.path.abspath(__file__)
@@ -29,6 +22,13 @@ st.set_page_config(
     page_title="SyncWithMe",
     page_icon=assistant_path if os.path.exists(assistant_path) else None,
 )
+
+# import project modules
+from Common.Config_Loader import config
+from Module.SyncWithMeChatBot import SyncWithMeChatBot
+from Common.Sheet_Functions import SheetClass as sc
+from Common import Constant as c
+from PIL import Image
 
 # Load external CSS
 def load_css(file_path):
