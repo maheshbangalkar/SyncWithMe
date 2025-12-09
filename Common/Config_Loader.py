@@ -167,18 +167,28 @@ class Config:
     # General Key Finder
     # ------------------------------------------------------------
     def fetch_key_value(self, key_name):
-
+        # Streamlit CLOUD MODE
         if self.is_streamlit_cloud:
-            for section in self.config.values():
-                if key_name in section:
+            if key_name in st.secrets:
+                return st.secrets[key_name]
+
+            for section_name, section in self.config.items():
+                if isinstance(section, dict) and key_name in section:
                     return section[key_name]
+            for section_name, section in st.secrets.items():
+                if isinstance(section, dict) and key_name in section:
+                    return section[key_name]
+
+        # LOCAL MODE
         else:
+
             for sec in self.config.sections():
                 if key_name in self.config[sec]:
                     return self.config[sec][key_name]
-
-        raise KeyError(f"❌ Key '{key_name}' not found")
-
+            env_value = os.getenv(key_name)
+            if env_value:
+                return env_value
+        raise KeyError(f"❌ Key '{key_name}' not found in any config source.")
 
 # GLOBAL SINGLETON
 config = Config()
