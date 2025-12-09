@@ -18,3 +18,54 @@
     background-color: #0E1117;
 }
 
+/* styles/styles.css */
+
+/* Strong, multi-target selector to override Streamlit button/link variants */
+.sync-btn, 
+.sync-btn .stButton, 
+.sync-btn .stButton button, 
+.sync-btn .stButton > a,
+.sync-btn a,
+.sync-btn button,
+.sync-btn [role="button"],
+.sync-btn [data-testid="stLink"] {
+    /* nothing here - selectors listed for precedence */
+}
+
+/* styles/styles.css */
+
+/* container alignment to keep button to the right of the column */
+.sync-btn {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.sync-btn {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.sync-btn .sync-link {
+    color: white !important;
+    padding: 10px 18px !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+.sync-btn .sync-link:hover {
+    background-color: #d32d2d !important;
+}
+
+.sync-link .icon {
+    color: #14E3FF !important;
+    text-shadow: 0 0 6px rgba(20, 227, 255, 0.6);
+    font-size: 1rem;
+}
+
+
+

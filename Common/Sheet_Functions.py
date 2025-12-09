@@ -73,7 +73,7 @@ class SheetClass:
             logging.info(f"✅ Google Sheet Loaded: {self.sheet_name}")
 
         except Exception as e:
-            logging.error(f"❌ Error loading Google Sheet: {e}")
+            logging.exception("❌ Error loading Google Sheet: {e}")
             raise
 
     # -------------------------------------------------------
